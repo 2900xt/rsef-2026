@@ -1,4 +1,6 @@
-#include <M5StickCPlus.h>  // Changed from M5StickC.h
+#include "config.h"
+
+#include <M5StickCPlus.h>
 #include <Wire.h>
 #include <vector>
 
@@ -7,97 +9,244 @@
 #define SEALEVELPRESSURE_HPA (1013.25)
 Adafruit_BME680 bme;
 
-
 #include <WiFi.h>
 #include <WiFiMulti.h>
 #include <HTTPClient.h>
 WiFiMulti wifiMulti;
 HTTPClient http;
-const char *wifi_ssid = "Verizon_T6YMSZ";
-const char *server_ip = "http://192.168.1.85:5000/";
-
+const char *server_ip = "http://192.168.1.190:5000/";
 const String dev_name = "sensor_01";
 const String location = "39.042388, -77.550108";
 
-std::vector<String> readings;
-
 bool is_registered = false;
+unsigned long lastUpdate = 0;
+unsigned long animationTimer = 0;
+int animationFrame = 0;
+bool wifiConnected = false;
 
-void API_register() {
-  String callpoint = server_ip;
-  callpoint += "register";
+struct SensorData
+{
+    float temperature;
+    float humidity;
+    float pressure;
+    float gasResistance;
+    unsigned long timestamp;
+};
 
-  Serial.println("[HTTP] register begin...");
-  M5.Lcd.println("[HTTP] register begin...");
+SensorData currentReading;
+SensorData previousReading;
 
-  http.begin(callpoint);
-  http.addHeader("Content-Type", "application/json");
+void drawSensorValue(int x, int y, const char *label, float value, const char *unit, float prevValue, uint16_t color)
+{
+    M5.Lcd.setTextSize(1);
+    M5.Lcd.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    M5.Lcd.setCursor(x, y);
+    M5.Lcd.print(label);
 
-  String postData = "{\"name\":\"" + dev_name + "\", \"location\":\"" + location + "\"}";
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.setTextColor(color, TFT_BLACK);
+    M5.Lcd.setCursor(x, y + 15);
+    M5.Lcd.printf("%.1f", value);
 
-  Serial.println("[HTTP] register POST...");
-  M5.Lcd.println("[HTTP] register POST...");
+    M5.Lcd.setTextSize(1);
+    M5.Lcd.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    M5.Lcd.print(" ");
+    M5.Lcd.print(unit);
 
-  int httpCode = http.POST(postData);
-
-  if (httpCode != 200) {
-    Serial.printf("POST register failed: %s\n", http.errorToString(httpCode).c_str());
-    M5.Lcd.printf("Reg FAIL: %s\n", http.errorToString(httpCode).c_str());
-  } else {
-    Serial.printf("POST register OK: code %d\n", httpCode);
-    M5.Lcd.printf("Reg OK: %d\n", httpCode);
-    is_registered = true;
-    String response = http.getString();
-  }
-
-  http.end();
+    if (abs(value - prevValue) > 0.01)
+    {
+        M5.Lcd.setTextColor(value > prevValue ? TFT_GREEN : TFT_RED, TFT_BLACK);
+        M5.Lcd.print(value > prevValue ? " +" : "-");
+    }
 }
 
+void API_register()
+{
+    String callpoint = server_ip;
+    callpoint += "register";
 
-void setup() {
-  M5.begin();
-  M5.Lcd.setRotation(3);
-  M5.Lcd.fillScreen(BLACK);
-  M5.Lcd.setTextSize(2);  // Larger text for bigger screen
-  M5.Lcd.setTextColor(WHITE);
-  
-  Wire.begin(32, 33);  // Grove port: SDA=32, SCL=33
-  
-  M5.Lcd.setCursor(0, 10);
-  M5.Lcd.println("BME680 Test");
-  
-  if (!bme.begin(0x77)) {  // Try 0x77 if this fails
-    M5.Lcd.println("No BME680!");
-    M5.Lcd.println("Check wiring");
-    while (1) delay(10);
-  }
-  
-  bme.setTemperatureOversampling(BME680_OS_8X);
-  bme.setHumidityOversampling(BME680_OS_2X);
-  bme.setPressureOversampling(BME680_OS_4X);
-  bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
-  bme.setGasHeater(320, 150);
-  
-  M5.Lcd.println("Ready!");
-  delay(1000);
+    http.begin(callpoint);
+    http.addHeader("Content-Type", "application/json");
+
+    String postData = "{\"name\":\"" + dev_name + "\", \"location\":\"" + location + "\"}";
+
+    int httpCode = http.POST(postData);
+    if (httpCode == 200)
+    {
+        is_registered = true;
+    }
+    else 
+    {
+        // write API error to LCD
+        M5.Lcd.setCursor(150, 10);
+        M5.Lcd.setTextColor(TFT_DARKGREY, TFT_BLACK);
+        M5.Lcd.printf("API REG ERR %d", httpCode);
+    }
+
+    http.end();
 }
 
-void loop() {
-  if (!bme.performReading()) {
-    M5.Lcd.fillScreen(BLACK);
-    M5.Lcd.setCursor(0, 10);
-    M5.Lcd.println("Reading failed");
+void API_update()
+{
+    static int fail_count = 0;
+    String callpoint = server_ip;
+    callpoint += "update";
+
+    http.begin(callpoint);
+    http.addHeader("Content-Type", "application/json");
+
+    String postData = "{\"name\":\"" + dev_name + "\", \"temperature\":" + String(currentReading.temperature) +
+                      ", \"humidity\":" + String(currentReading.humidity) +
+                      ", \"pressure\":" + String(currentReading.pressure) +
+                      ", \"gasResistance\":" + String(currentReading.gasResistance) +
+                      ", \"timestamp\":" + String(currentReading.timestamp) + "}";
+
+    int httpCode = http.POST(postData);
+    if (httpCode != 200)
+    {
+        // write API error to LCD
+        M5.Lcd.setCursor(150, 10);
+        M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
+        M5.Lcd.printf("API ERR %d", httpCode);
+        fail_count++;
+        if (fail_count > 5)
+        {
+            is_registered = false;
+            fail_count = 0;
+        }
+    }
+
+    http.end();
+}
+
+void setup()
+{
+    M5.begin();
+    M5.Lcd.setRotation(3);
+    M5.Lcd.fillScreen(TFT_BLACK);
+
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
+    M5.Lcd.setCursor(20, 50);
+    M5.Lcd.println("CROPSENSE");
+
+    M5.Lcd.setTextSize(1);
+    M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+    M5.Lcd.setCursor(30, 80);
+    M5.Lcd.println("Initializing...");
+
+
+    wifiMulti.addAP(WIFI_SSID, WIFI_PASSWD);
+
+    M5.Lcd.setCursor(30, 100);
+    M5.Lcd.println("Connecting WiFi...");
+
+    if (wifiMulti.run() == WL_CONNECTED)
+    {
+        wifiConnected = true;
+        M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+        M5.Lcd.setCursor(30, 120);
+        M5.Lcd.println("WiFi Connected!");
+    }
+
+    Wire.begin(32, 33);
+
+    M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+    M5.Lcd.setCursor(30, 140);
+    M5.Lcd.println("Init BME680...");
+
+    if (!bme.begin(0x77))
+    {
+        M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
+        M5.Lcd.setCursor(30, 160);
+        M5.Lcd.println("BME680 ERROR!");
+        while (1)
+            ;
+    }
+
+    bme.setTemperatureOversampling(BME680_OS_8X);
+    bme.setHumidityOversampling(BME680_OS_2X);
+    bme.setPressureOversampling(BME680_OS_4X);
+    bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
+    bme.setGasHeater(320, 150);
+
+    M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+    M5.Lcd.setCursor(30, 160);
+    M5.Lcd.println("BME680 Ready!");
+
     delay(2000);
-    return;
-  }
-  
-  M5.Lcd.fillScreen(BLACK);
-  M5.Lcd.setCursor(0, 10);
-  
-  M5.Lcd.printf("Temp: %.1f C\n\n", bme.temperature);
-  M5.Lcd.printf("Hum:  %.1f %%\n\n", bme.humidity);
-  M5.Lcd.printf("Press: %.0f hPa\n\n", bme.pressure / 100.0);
-  M5.Lcd.printf("Gas: %.1f KOhm", bme.gas_resistance / 1000.0);
-  
-  delay(2000);
+    M5.Lcd.fillScreen(TFT_BLACK);
+
+    lastUpdate = millis();
+    animationTimer = millis();
+
+    delay(1000);
+}
+
+void loop()
+{
+    unsigned long currentTime = millis();
+
+    if (currentTime - animationTimer > 250)
+    {
+        animationFrame = (animationFrame + 1) % 4;
+        animationTimer = currentTime;
+    }
+
+    if (currentTime - lastUpdate < 1000)
+    {
+        delay(100);
+        return;
+    }
+
+    if (!bme.performReading())
+    {
+        M5.Lcd.fillScreen(TFT_BLACK);
+        M5.Lcd.setTextSize(2);
+        M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
+        M5.Lcd.setCursor(30, 100);
+        M5.Lcd.println("SENSOR ERROR");
+        delay(1000);
+        return;
+    }
+
+    previousReading = currentReading;
+
+    currentReading.temperature = bme.temperature;
+    currentReading.humidity = bme.humidity;
+    currentReading.pressure = bme.pressure / 1000.0;
+    currentReading.gasResistance = bme.gas_resistance / 1000.0;
+    currentReading.timestamp = currentTime;
+
+    M5.Lcd.fillScreen(TFT_BLACK);
+
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
+    M5.Lcd.setCursor(10, 10);
+    M5.Lcd.println("CROPSENSE");
+
+    drawSensorValue(10, 40, "TEMP", currentReading.temperature, "C",
+                    previousReading.temperature, TFT_RED);
+
+    drawSensorValue(130, 40, "HUMIDITY", currentReading.humidity, "%",
+                    previousReading.humidity, TFT_BLUE);
+
+    drawSensorValue(10, 100, "PRESSURE", currentReading.pressure, "kPa",
+                    previousReading.pressure, TFT_GREEN);
+
+    drawSensorValue(130, 100, "GAS", currentReading.gasResistance, "K",
+                    previousReading.gasResistance, TFT_YELLOW);
+
+    lastUpdate = currentTime;
+
+    if (wifiConnected && !is_registered)
+    {
+        API_register();
+    }
+    else 
+    {
+        API_update();
+    }
+    
+    delay(100);
 }
