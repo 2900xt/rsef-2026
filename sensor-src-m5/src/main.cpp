@@ -1,4 +1,4 @@
-#include "config.h"
+#include <config.h>
 
 #include <M5StickCPlus.h>
 #include <Wire.h>
@@ -9,13 +9,20 @@
 #define SEALEVELPRESSURE_HPA (1013.25)
 Adafruit_BME680 bme;
 
+#include <TroykaMQ.h>
+#define MQ2_PIN 36
+#define MQ2_RL 10.0
+MQ2 mq2(MQ2_PIN);
+float mq2_ro = 10.0;
+bool mq2_calibrated = false;
+
 #include <WiFi.h>
 #include <WiFiMulti.h>
 #include <HTTPClient.h>
 WiFiMulti wifiMulti;
 HTTPClient http;
-const char *server_ip = "http://192.168.1.190:5000/";
-const String dev_name = "sensor_01";
+const char *server_ip = "http://192.168.1.251:5000/";
+const String dev_name = "sensor_02";
 const String location = "39.042388, -77.550108";
 
 bool is_registered = false;
@@ -30,6 +37,9 @@ struct SensorData
     float humidity;
     float pressure;
     float gasResistance;
+    float lpg;
+    float ch4;
+    float smoke;
     unsigned long timestamp;
 };
 
@@ -99,6 +109,9 @@ void API_update()
                       ", \"humidity\":" + String(currentReading.humidity) +
                       ", \"pressure\":" + String(currentReading.pressure) +
                       ", \"gasResistance\":" + String(currentReading.gasResistance) +
+                      ", \"lpg\":" + String(currentReading.lpg) +
+                      ", \"ch4\":" + String(currentReading.ch4) +
+                      ", \"smoke\":" + String(currentReading.smoke) +
                       ", \"timestamp\":" + String(currentReading.timestamp) + "}";
 
     int httpCode = http.POST(postData);
@@ -174,6 +187,18 @@ void setup()
     M5.Lcd.setCursor(30, 160);
     M5.Lcd.println("BME680 Ready!");
 
+    M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+    M5.Lcd.setCursor(30, 180);
+    M5.Lcd.println("Calibrating MQ2...");
+
+    mq2.calibrate();
+    mq2_ro = mq2.getRo();
+    mq2_calibrated = true;
+
+    M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+    M5.Lcd.setCursor(30, 200);
+    M5.Lcd.printf("MQ2 Ro: %.2f", mq2_ro);
+
     delay(2000);
     M5.Lcd.fillScreen(TFT_BLACK);
 
@@ -216,6 +241,17 @@ void loop()
     currentReading.humidity = bme.humidity;
     currentReading.pressure = bme.pressure / 1000.0;
     currentReading.gasResistance = bme.gas_resistance / 1000.0;
+    
+    if (mq2_calibrated) {
+        currentReading.lpg = mq2.readLPG();
+        currentReading.ch4 = mq2.readMethane();
+        currentReading.smoke = mq2.readSmoke();
+    } else {
+        currentReading.lpg = 0;
+        currentReading.ch4 = 0;
+        currentReading.smoke = 0;
+    }
+    
     currentReading.timestamp = currentTime;
 
     M5.Lcd.fillScreen(TFT_BLACK);
