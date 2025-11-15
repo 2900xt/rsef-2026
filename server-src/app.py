@@ -6,7 +6,7 @@ from datetime import datetime
 app = Flask(__name__)
 values = dict()
 
-sensor_data_labels = ['temperature', 'humidity', 'pressure', 'gasResistance', 'lpg', 'ch4', 'smoke']
+sensor_data_labels = ['temperature', 'humidity', 'pressure', 'gasResistance']
 # deg C, %, kPa, KOhm
 
 def log(msg):
