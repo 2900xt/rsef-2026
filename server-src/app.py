@@ -6,7 +6,7 @@ from datetime import datetime
 app = Flask(__name__)
 values = dict()
 
-sensor_data = ['temperature', 'humidity', 'pressure', 'gasResistance']
+sensor_data_labels = ['temperature', 'humidity', 'pressure', 'gasResistance']
 # deg C, %, kPa, KOhm
 
 def log(msg):
@@ -18,28 +18,28 @@ def log(msg):
 def update_data():
     try:
         # Get the new value from the request JSON body
-        data = request.get_json()
-        if 'name' not in data:
+        recieved_sensor_data = request.get_json()
+        if 'name' not in recieved_sensor_data:
             return jsonify({'error': 'No name provided'}), 400
         
-        for data_name in sensor_data:
-            if data_name not in data:
+        for data_name in sensor_data_labels:
+            if data_name not in recieved_sensor_data:
                 return jsonify({'error': f'No value provided for {data_name}'}), 400
-            values[data['name']]['data'][data_name] = data[data_name]
+            values[recieved_sensor_data['name']]['data'][data_name] = recieved_sensor_data[data_name]
 
-        values[data['name']]['last_upd'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        log(f"Updated data for {data['name']}: {values[data['name']]['data']}")
+        values[recieved_sensor_data['name']]['last_upd'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log(f"Updated data for {recieved_sensor_data['name']}: {values[recieved_sensor_data['name']]['data']}")
 
         # Append the new data to the CSV file
-        file_present = os.path.exists(f'data/data_{data['name']}.csv')
+        file_present = os.path.exists(f'data/data_{recieved_sensor_data['name']}.csv')
 
-        with open(f'data/data_{data['name']}.csv', mode='a', newline='') as file:
+        with open(f'data/data_{recieved_sensor_data['name']}.csv', mode='a', newline='') as file:
             if not file_present:
                 writer = csv.writer(file)
                 header = ['Timestamp', 'Temperature (°C)', 'Humidity (%)', 'Pressure (kPa)', 'Gas Resistance (KOhm)']
                 writer.writerow(header)
             writer = csv.writer(file)
-            row = [values[data['name']]['last_upd']] + [values[data['name']]['data'][name] for name in sensor_data]
+            row = [values[recieved_sensor_data['name']]['last_upd']] + [values[recieved_sensor_data['name']]['data'][name] for name in sensor_data_labels]
             writer.writerow(row)
 
         return jsonify({'message': f'Data updated successfully'}), 200
