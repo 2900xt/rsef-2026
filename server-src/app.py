@@ -6,8 +6,8 @@ from datetime import datetime
 app = Flask(__name__)
 values = dict()
 
-sensor_data_labels = ['temperature', 'humidity', 'pressure', 'gasResistance']
-# deg C, %, kPa, KOhm
+sensor_data_labels = ['temperature', 'humidity', 'pressure', 'gasResistance', 'mq2_rs', 'mq2_ratio', 'mq2_smoke_ppm']
+# deg C, %, kPa, KOhm, KOhm, ratio, PPM
 
 def log(msg):
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -36,7 +36,7 @@ def update_data():
         with open(f'data/data_{recieved_sensor_data['name']}.csv', mode='a', newline='') as file:
             if not file_present:
                 writer = csv.writer(file)
-                header = ['Timestamp', 'Temperature (°C)', 'Humidity (%)', 'Pressure (kPa)', 'Gas Resistance (KOhm)']
+                header = ['Timestamp', 'Temperature (°C)', 'Humidity (%)', 'Pressure (kPa)', 'Gas Resistance (KOhm)', 'MQ2 Rs (KOhm)', 'MQ2 Rs/R0', 'MQ2 Smoke (PPM)']
                 writer.writerow(header)
             writer = csv.writer(file)
             row = [values[recieved_sensor_data['name']]['last_upd']] + [values[recieved_sensor_data['name']]['data'][name] for name in sensor_data_labels]
@@ -61,7 +61,10 @@ def register_sensor():
                 'temperature' : 0.0,
                 'humidity' : 0.0,
                 'pressure' : 0.0,
-                'gasResistance' : 0.0
+                'gasResistance' : 0.0,
+                'mq2_rs' : 0.0,
+                'mq2_ratio' : 0.0,
+                'mq2_smoke_ppm' : 0.0
             },
             'location' : dev_loc,
             'last_upd' : datetime.now().strftime("%Y-%m-%d %H:%M:%S")
