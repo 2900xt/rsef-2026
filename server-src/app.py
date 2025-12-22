@@ -6,8 +6,11 @@ from datetime import datetime
 app = Flask(__name__)
 values = dict()
 
-sensor_data_labels = ['temperature', 'humidity', 'pressure', 'gasResistance']
-# deg C, %, kPa, KOhm
+sensor_data_labels = [
+    'temperature', 'humidity', 'pressure', 'gasResistance',
+    'mq2_rs', 'mq2_ratio', 'mq2_r0', 'mq2_delta', 'mq2_variance', 'mq2_baseline'
+]
+# deg C, %, kPa, KOhm, Ohm, ratio, Ohm, ratio, ratio^2, ratio
 
 def log(msg):
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -21,13 +24,20 @@ def update_data():
         recieved_sensor_data = request.get_json()
         if 'name' not in recieved_sensor_data:
             return jsonify({'error': 'No name provided'}), 400
-        
+
+        # Extract additional metadata fields
+        plant_id = recieved_sensor_data.get('plant_id', 'unknown')
+        disease_status = recieved_sensor_data.get('disease_status', 'unknown')
+        sensor_timestamp = recieved_sensor_data.get('timestamp', '')
+
         for data_name in sensor_data_labels:
             if data_name not in recieved_sensor_data:
                 return jsonify({'error': f'No value provided for {data_name}'}), 400
             values[recieved_sensor_data['name']]['data'][data_name] = recieved_sensor_data[data_name]
 
         values[recieved_sensor_data['name']]['last_upd'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        values[recieved_sensor_data['name']]['plant_id'] = plant_id
+        values[recieved_sensor_data['name']]['disease_status'] = disease_status
         log(f"Updated data for {recieved_sensor_data['name']}: {values[recieved_sensor_data['name']]['data']}")
 
         # Append the new data to the CSV file
@@ -36,10 +46,19 @@ def update_data():
         with open(f'data/data_{recieved_sensor_data['name']}.csv', mode='a', newline='') as file:
             if not file_present:
                 writer = csv.writer(file)
-                header = ['Timestamp', 'Temperature (°C)', 'Humidity (%)', 'Pressure (kPa)', 'Gas Resistance (KOhm)']
+                header = [
+                    'Timestamp', 'Sensor Timestamp', 'Plant ID', 'Disease Status',
+                    'Temperature (°C)', 'Humidity (%)', 'Pressure (kPa)', 'Gas Resistance (KOhm)',
+                    'MQ2 Rs (Ohm)', 'MQ2 Ratio', 'MQ2 R0 (Ohm)', 'MQ2 Delta', 'MQ2 Variance', 'MQ2 Baseline'
+                ]
                 writer.writerow(header)
             writer = csv.writer(file)
-            row = [values[recieved_sensor_data['name']]['last_upd']] + [values[recieved_sensor_data['name']]['data'][name] for name in sensor_data_labels]
+            row = [
+                values[recieved_sensor_data['name']]['last_upd'],
+                sensor_timestamp,
+                plant_id,
+                disease_status
+            ] + [values[recieved_sensor_data['name']]['data'][name] for name in sensor_data_labels]
             writer.writerow(row)
 
         return jsonify({'message': f'Data updated successfully'}), 200
@@ -61,9 +80,17 @@ def register_sensor():
                 'temperature' : 0.0,
                 'humidity' : 0.0,
                 'pressure' : 0.0,
-                'gasResistance' : 0.0
+                'gasResistance' : 0.0,
+                'mq2_rs' : 0.0,
+                'mq2_ratio' : 0.0,
+                'mq2_r0' : 0.0,
+                'mq2_delta' : 0.0,
+                'mq2_variance' : 0.0,
+                'mq2_baseline' : 0.0
             },
             'location' : dev_loc,
+            'plant_id' : 'unknown',
+            'disease_status' : 'unknown',
             'last_upd' : datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
 
