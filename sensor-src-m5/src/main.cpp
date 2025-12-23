@@ -12,10 +12,10 @@ Adafruit_BME680 bme;
 #include <HTTPClient.h>
 WiFiMulti wifiMulti;
 HTTPClient http;
-const char *server_ip = "http://192.168.1.190:5000/";
-const String dev_name = "plant_001";
+const char *server_ip = "http://tahar.duckdns.org:67/";
+const String dev_name = "plant_002";
 const String location = "39.042388, -77.550108";
-const String plant_id = "plant_001";              // Track which plant is being monitored
+const String plant_id = "plant_002";              // Track which plant is being monitored
 const String disease_status = "healthy";          // Status: healthy/diseased/unknown
 bool is_registered = false;
 unsigned long lastUpdate = 0;
