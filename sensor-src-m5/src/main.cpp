@@ -13,9 +13,9 @@ Adafruit_BME680 bme;
 WiFiMulti wifiMulti;
 HTTPClient http;
 const char *server_ip = "http://tahar.duckdns.org:67/";
-const String dev_name = "plant_002";
+const String dev_name = "plant_003";
 const String location = "39.042388, -77.550108";
-const String plant_id = "plant_002";              // Track which plant is being monitored
+const String plant_id = "plant_003";              // Track which plant is being monitored
 const String disease_status = "healthy";          // Status: healthy/diseased/unknown
 bool is_registered = false;
 unsigned long lastUpdate = 0;
