@@ -80,7 +80,7 @@ SensorData previousReading;  // Track previous for delta calculation
 
 void API_register()
 {
-    Serial.println("Registering with server...");
+    Serial.println("Registering with OR WITHOUT server...");
     String callpoint = server_ip;
     callpoint += "register";
 
